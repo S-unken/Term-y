@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>TERMY OS</title>
 <style>
+  .hidden { display: none !important; }
+
   :root{
     --desktop-bg: #008080;        /* Win98 teal */
     --taskbar: #c0c0c0;           /* Classic gray */
@@ -478,10 +480,52 @@
       }
     }, 'Starting Browser...');
   }
+<!-- Boot screen -->
+<div id="boot" class="screen active">
+  <div class="boot-inner scanlines">
+    <img src="logo.png" alt="TERMY logo" class="boot-logo" id="boot-logo" />
+    <div class="boot-text hidden" id="boot-text"></div>
+    <div class="boot-bar hidden"><div class="progress" id="boot-progress"></div></div>
+  </div>
+</div>
 
-  // Start!
-  runBoot();
-})();
+  function runBoot() {
+  const logoOnlyTime = 5000; // 5 seconds logo-only
+  const totalBootTime = LOAD_DURATION; // 30 seconds total
+  const bootTextTime = totalBootTime - logoOnlyTime;
+
+  // Phase 1: Logo only
+  setTimeout(() => {
+    // Show boot text + progress bar
+    document.getElementById('boot-text').classList.remove('hidden');
+    document.querySelector('.boot-bar').classList.remove('hidden');
+
+    // Start progress bar
+    bootProg.style.transitionDuration = bootTextTime + 'ms';
+    requestAnimationFrame(() => (bootProg.style.width = '100%'));
+
+    // Start printing boot lines
+    let idx = 0;
+    const step = Math.max(250, Math.floor(bootTextTime / (bootLines.length + 4)));
+    const timer = setInterval(() => {
+      if (idx < bootLines.length) {
+        const line = document.createElement('div');
+        line.className = 'boot-line';
+        line.textContent = '> ' + bootLines[idx++];
+        bootText.appendChild(line);
+        bootText.scrollTop = bootText.scrollHeight;
+      }
+    }, step);
+
+    // End boot after remaining time
+    setTimeout(() => {
+      clearInterval(timer);
+      switchToDesktop();
+    }, bootTextTime);
+
+  }, logoOnlyTime);
+}
+
 </script>
 </body>
 </html>
