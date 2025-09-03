@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TERMY OS</title>
+<style>
+  :root{
+    --desktop-bg: #008080;        /* Win98 teal */
+    --taskbar: #c0c0c0;           /* Classic gray */
+    --taskbar-dark: #808080;
+    --taskbar-light: #ffffff;
+    --titlebar: #000080;          /* Navy */
+    --titlebar-inactive: #6b6bb5;
+    --titlebar-text: #ffffff;
+    --window-bg: #c0c0c0;
+    --shadow: rgba(0,0,0,0.35);
+    --scanline: rgba(255,255,255,0.03);
+  }
+
+  html, body {
+    margin: 0; height: 100%; background: #000; overflow: hidden;
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale;
+  }
+
+  .screen {
+    position: fixed; inset: 0; display: none;
+  }
+  .screen.active { display: block; }
+
+  /* Boot screen */
+  #boot {
+    background: #000; color: #0f0; display: grid; place-items: center;
+  }
+  .boot-inner {
+    position: relative; width: min(720px, 90vw); text-align: center;
+    padding: 24px; border: 2px solid #0f0; box-shadow: 0 0 40px #0f08 inset, 0 0 40px #0f08;
+  }
+  .boot-logo {
+    width: min(420px, 60vw); image-rendering: pixelated; filter: contrast(110%) brightness(105%);
+  }
+  .scanlines:before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(transparent 0px, transparent 2px, var(--scanline) 3px);
+    pointer-events: none; mix-blend-mode: screen;
+  }
+  .boot-text {
+    margin-top: 18px; height: 100px; text-align: left; overflow: hidden; font-size: 14px; line-height: 1.35;
+    color: #9aff9a;
+  }
+  .boot-line { white-space: nowrap; }
+  .boot-bar {
+    width: 100%; height: 14px; background: #001900; border: 1px solid #0f0; margin-top: 16px; position: relative;
+  }
+  .boot-bar .progress {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: linear-gradient(90deg, #0a0, #0f0);
+    box-shadow: 0 0 8px #0f0;
+    transition: width linear;
+  }
+
+  /* Loading overlay for “page changes” */
+  #loading-overlay {
+    position: fixed; inset: 0; display: none; background: #000; color: #0f0; z-index: 9999;
+  }
+  #loading-overlay.active { display: grid; place-items: center; }
+  .loading-box {
+    width: min(520px, 90vw); border: 2px solid #0f0; padding: 16px; text-align: center; position: relative;
+  }
+  .loading-title { font-weight: bold; margin-bottom: 12px; }
+  .loading-bar { height: 10px; background: #001900; border: 1px solid #0f0; }
+  .loading-bar .progress { height: 100%; width: 0%; background: linear-gradient(90deg, #0a0, #0f0); transition: width linear; }
+  .loading-note { margin-top: 10px; color: #9aff9a; font-size: 12px; }
+
+  /* Desktop */
+  #desktop {
+    background: var(--desktop-bg) url('data:image/svg+xml;utf8,\
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">\
+        <rect width="16" height="16" fill="%23008080"/>\
+        <circle cx="2" cy="2" r="1" fill="%23006666"/>\
+      </svg>') repeat;
+    display: grid; grid-template-rows: 1fr 34px;
+    color: #000; user-select: none;
+  }
+
+  /* Icons */
+  .icons { position: relative; padding: 10px; }
+  .icon {
+    width: 70px; text-align: center; color: #fff; font-size: 12px;
+    margin: 8px; cursor: default; display: inline-flex; flex-direction: column; align-items: center; gap: 6px;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6));
+  }
+  .icon:focus, .icon.selected { outline: 1px dotted #fff; outline-offset: 2px; }
+  .icon .img {
+    width: 32px; height: 32px; background: linear-gradient(#ffd27f, #c49a3f);
+    border: 1px solid rgba(0,0,0,0.35);
+    box-shadow: inset -2px -2px 0 rgba(0,0,0,0.25), inset 2px 2px 0 rgba(255,255,255,0.35);
+  }
+  .icon .label {
+    background: rgba(0,0,128,0.35); padding: 2px 4px; border: 1px solid rgba(255,255,255,0.4);
+    text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
+  }
+
+  /* Taskbar */
+  .taskbar {
+    background: var(--taskbar); border-top: 2px solid var(--taskbar-light); box-shadow: inset 0 2px 0 var(--taskbar-dark);
+    display: grid; grid-template-columns: 120px 1fr 160px; align-items: center; gap: 6px; padding: 4px;
+  }
+  .start-button {
+    margin-left: 4px; height: 26px; display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 10px; background: var(--taskbar); border: 2px solid; border-color: var(--taskbar-light) var(--taskbar-dark) var(--taskbar-dark) var(--taskbar-light);
+    box-shadow: inset -1px -1px 0 var(--taskbar-dark), inset 1px 1px 0 var(--taskbar-light);
+    cursor: default;
+  }
+  .start-button:active {
+    border-color: var(--taskbar-dark) var(--taskbar-light) var(--taskbar-light) var(--taskbar-dark);
+    box-shadow: inset -1px -1px 0 var(--taskbar-light), inset 1px 1px 0 var(--taskbar-dark);
+  }
+  .start-logo {
+    width: 18px; height: 18px; background: linear-gradient(#fff,#ddd); border: 1px solid #888;
+  }
+  .task-area { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+  .task {
+    min-width: 140px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background: var(--taskbar); border: 2px solid; border-color: var(--taskbar-light) var(--taskbar-dark) var(--taskbar-dark) var(--taskbar-light);
+    box-shadow: inset -1px -1px 0 var(--taskbar-dark), inset 1px 1px 0 var(--taskbar-light);
+    padding: 4px 8px; cursor: default;
+  }
+  .clock {
+    justify-self: end; margin-right: 8px; padding: 4px 8px;
+    border: 2px solid; border-color: var(--taskbar-dark) var(--taskbar-light) var(--taskbar-light) var(--taskbar-dark);
+    background: var(--taskbar);
+  }
+
+  /* Start menu */
+  .start-menu {
+    position: fixed; left: 6px; bottom: 34px; width: 240px; background: var(--window-bg); display: none; z-index: 2000;
+    border: 2px solid; border-color: var(--taskbar-dark) var(--taskbar-light) var(--taskbar-light) var(--taskbar-dark);
+    box-shadow: 4px 4px 0 var(--shadow);
+  }
+  .start-menu.active { display: block; }
+  .start-header { background: #000080; color: #fff; padding: 8px; font-weight: bold; }
+  .start-list { padding: 6px; }
+  .start-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px; cursor: default;
+  }
+  .start-item:hover { background: #000080; color: #fff; }
+
+  /* Window */
+  .window {
+    position: absolute; background: var(--window-bg); border: 2px solid;
+    border-color: var(--taskbar-dark) var(--taskbar-light) var(--taskbar-light) var(--taskbar-dark);
+    box-shadow: 6px 6px 0 var(--shadow);
+    width: 640px; height: 420px; top: 60px; left: 60px; display: flex; flex-direction: column;
+  }
+  .titlebar {
+    background: linear-gradient(#000080, #00004f); color: var(--titlebar-text);
+    padding: 2px 6px; display: flex; align-items: center; justify-content: space-between; cursor: move;
+  }
+  .title { font-weight: bold; }
+  .win-controls { display: flex; gap: 4px; }
+  .btn {
+    width: 16px; height: 16px; background: #c0c0c0; border: 2px solid;
+    border-color: var(--taskbar-light) var(--taskbar-dark) var(--taskbar-dark) var(--taskbar-light);
+    text-align: center; line-height: 12px; font-weight: bold; font-size: 12px;
+  }
+  .content { background: #fff; border: 2px solid; border-color: var(--taskbar-dark) var(--taskbar-light) var(--taskbar-light) var(--taskbar-dark); margin: 6px; flex: 1; overflow: hidden; }
+  .chrome-fallback {
+    height: 100%; display: grid; place-items: center; text-align: center; padding: 16px;
+    background: repeating-linear-gradient(45deg, #f8f8f8 0, #f8f8f8 10px, #f1f1f1 10px, #f1f1f1 20px);
+    color: #333;
+  }
+  .addr-bar {
+    margin: 6px; display: flex; gap: 6px;
+  }
+  .addr-bar input {
+    flex: 1; padding: 4px; border: 2px solid; border-color: var(--taskbar-dark) var(--taskbar-light) var(--taskbar-light) var(--taskbar-dark);
+  }
+  .addr-bar button {
+    padding: 4px 8px; border: 2px solid; border-color: var(--taskbar-light) var(--taskbar-dark) var(--taskbar-dark) var(--taskbar-light);
+    background: #c0c0c0;
+  }
+
+  /* Helpers */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Boot screen -->
+<div id="boot" class="screen active">
+  <div class="boot-inner scanlines">
+    <img src="logo.png" alt="TERMY logo" class="boot-logo" />
+    <div class="boot-text" id="boot-text"></div>
+    <div class="boot-bar"><div class="progress" id="boot-progress"></div></div>
+  </div>
+</div>
+
+<!-- Loading overlay (used on “page changes”) -->
+<div id="loading-overlay">
+  <div class="loading-box scanlines">
+    <div class="loading-title">Loading module...</div>
+    <div class="loading-bar"><div class="progress" id="nav-progress"></div></div>
+    <div class="loading-note">Simulating classic hardware latency. Please wait.</div>
+  </div>
+</div>
+
+<!-- Desktop -->
+<div id="desktop" class="screen">
+  <div class="icons">
+    <div class="icon" id="icon-browser" tabindex="0" title="Browser">
+      <div class="img" style="background: linear-gradient(#86b7ff, #2b79ff);"></div>
+      <div class="label">Browser</div>
+    </div>
+  </div>
+
+  <div class="taskbar">
+    <div class="start-button" id="start-btn">
+      <div class="start-logo"></div>
+      <div>Start</div>
+    </div>
+    <div class="task-area" id="task-area"></div>
+    <div class="clock" id="clock"></div>
+  </div>
+
+  <div class="start-menu" id="start-menu">
+    <div class="start-header">TERMY</div>
+    <div class="start-list">
+      <div class="start-item" data-action="open-browser">
+        <div class="start-logo" style="width:14px;height:14px;"></div>
+        <div>Browser</div>
+      </div>
+      <div class="start-item" data-action="about">
+        <div class="start-logo" style="width:14px;height:14px;background:linear-gradient(#fff,#bbb)"></div>
+        <div>About</div>
+      </div>
+      <div class="start-item" data-action="shutdown">
+        <div class="start-logo" style="width:14px;height:14px;background:linear-gradient(#ff9f9f,#ff5f5f)"></div>
+        <div>Shut Down...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const LOAD_DURATION = 30000; // 30 seconds for boot and “page changes”
+
+  /* Boot sequence */
+  const bootEl = document.getElementById('boot');
+  const desktopEl = document.getElementById('desktop');
+  const bootText = document.getElementById('boot-text');
+  const bootProg = document.getElementById('boot-progress');
+
+  const bootLines = [
+    'TERMY BIOS v1.98 Copyright (C) 1998-2025',
+    'CPU: 80486DX detected',
+    'Memory test: 65536K OK',
+    'Detecting IDE primary... OK',
+    'Detecting IDE secondary... OK',
+    'Initializing VGA... OK',
+    'Loading TERMY OS kernel...',
+    'Mounting filesystem...',
+    'Enumerating drivers...',
+    'Starting services...',
+    'Building desktop...',
+    'Applying theme: Win98 Classic',
+    'Finalizing boot sequence...'
+  ];
+
+  function runBoot() {
+    bootProg.style.transitionDuration = LOAD_DURATION + 'ms';
+    requestAnimationFrame(() => (bootProg.style.width = '100%'));
+
+    let idx = 0;
+    const step = Math.max(250, Math.floor(LOAD_DURATION / (bootLines.length + 4)));
+    const timer = setInterval(() => {
+      if (idx < bootLines.length) {
+        const line = document.createElement('div');
+        line.className = 'boot-line';
+        line.textContent = '> ' + bootLines[idx++];
+        bootText.appendChild(line);
+        bootText.scrollTop = bootText.scrollHeight;
+      }
+    }, step);
+
+    setTimeout(() => {
+      clearInterval(timer);
+      switchToDesktop();
+    }, LOAD_DURATION);
+  }
+
+  function switchToDesktop() {
+    bootEl.classList.remove('active');
+    desktopEl.classList.add('active');
+  }
+
+  /* Loading overlay for navigation */
+  const overlay = document.getElementById('loading-overlay');
+  const navProg = document.getElementById('nav-progress');
+
+  function withLoader(fn, title = 'Loading module...') {
+    overlay.querySelector('.loading-title').textContent = title;
+    navProg.style.transition = 'none';
+    navProg.style.width = '0%';
+    overlay.classList.add('active');
+    requestAnimationFrame(() => {
+      navProg.style.transition = `width ${LOAD_DURATION}ms linear`;
+      navProg.style.width = '100%';
+    });
+    setTimeout(() => {
+      overlay.classList.remove('active');
+      fn && fn();
+    }, LOAD_DURATION);
+  }
+
+  /* Clock */
+  const clockEl = document.getElementById('clock');
+  function updateClock() {
+    const now = new Date();
+    const hh = now.getHours();
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    clockEl.textContent = `${((hh + 11) % 12) + 1}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
+  }
+  setInterval(updateClock, 1000); updateClock();
+
+  /* Start menu */
+  const startBtn = document.getElementById('start-btn');
+  const startMenu = document.getElementById('start-menu');
+
+  function toggleStartMenu(force) {
+    const on = force !== undefined ? force : !startMenu.classList.contains('active');
+    startMenu.classList.toggle('active', on);
+  }
+  startBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleStartMenu();
+  });
+  document.addEventListener('click', (e) => {
+    if (!startMenu.contains(e.target) && e.target !== startBtn) {
+      toggleStartMenu(false);
+    }
+  });
+  startMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.start-item');
+    if (!item) return;
+    const action = item.getAttribute('data-action');
+    toggleStartMenu(false);
+    if (action === 'open-browser') {
+      launchBrowser();
+    } else if (action === 'about') {
+      openAboutWindow();
+    } else if (action === 'shutdown') {
+      withLoader(() => location.reload(), 'Shutting down...');
+    }
+  });
+
+  /* Desktop icon: Browser */
+  const iconBrowser = document.getElementById('icon-browser');
+  iconBrowser.addEventListener('dblclick', () => launchBrowser());
+  iconBrowser.addEventListener('click', (e) => iconBrowser.classList.add('selected'));
+  document.addEventListener('click', (e) => {
+    if (!iconBrowser.contains(e.target)) iconBrowser.classList.remove('selected');
+  });
+
+  /* Window management helpers */
+  const taskArea = document.getElementById('task-area');
+  let zTop = 10;
+  function createWindow({ title = 'Window', content, id }) {
+    const win = document.createElement('div');
+    win.className = 'window';
+    if (id) win.dataset.id = id;
+    win.style.zIndex = ++zTop;
+
+    const titlebar = document.createElement('div');
+    titlebar.className = 'titlebar';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'title';
+    titleEl.textContent = title;
+    const controls = document.createElement('div');
+    controls.className = 'win-controls';
+    const btnMin = document.createElement('div'); btnMin.className = 'btn'; btnMin.textContent = '_';
+    const btnClose = document.createElement('div'); btnClose.className = 'btn'; btnClose.textContent = 'X';
+    controls.append(btnMin, btnClose);
+    titlebar.append(titleEl, controls);
+
+    const contentEl = document.createElement('div'); contentEl.className = 'content';
+    if (content instanceof HTMLElement) contentEl.appendChild(content); else contentEl.innerHTML = content;
+
+    win.append(titlebar, contentEl);
+    desktopEl.appendChild(win);
+
+    // Task button
+    const task = document.createElement('div');
+    task.className = 'task';
+    task.textContent = title;
+    taskArea.appendChild(task);
+
+    function focusWin() { win.style.zIndex = ++zTop; }
+    win.addEventListener('mousedown', focusWin);
+    task.addEventListener('click', focusWin);
+
+    btnClose.addEventListener('click', () => {
+      win.remove(); task.remove();
+    });
+    btnMin.addEventListener('click', () => {
+      win.style.display = 'none';
+      task.classList.add('minimized');
+    });
+    task.addEventListener('dblclick', () => {
+      if (win.style.display === 'none') { win.style.display = 'flex'; focusWin(); }
+      else { win.style.display = 'none'; }
+    });
+
+    // Drag
+    let drag = null;
+    titlebar.addEventListener('mousedown', (e) => {
+      drag = { x: e.clientX, y: e.clientY, left: win.offsetLeft, top: win.offsetTop };
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      win.style.left = Math.max(0, drag.left + dx) + 'px';
+      win.style.top = Math.max(0, drag.top + dy) + 'px';
+    });
+    document.addEventListener('mouseup', () => drag = null);
+
+    return { win, task, contentEl, titleEl };
+  }
+
+  /* About window */
+  function openAboutWindow() {
+    const content = document.createElement('div');
+    content.style.padding = '12px';
+    content.innerHTML = `
+      <b>TERMY OS</b><br/>
+      A tiny web-based “OS” with retro loading and a Win98 vibe.<br/><br/>
+      Boot logo is loaded from <code>logo.png</code> in the same folder.<br/>
+      Browser app tries to open Chrome in a new tab.
+    `;
+    createWindow({ title: 'About TERMY', content, id: 'about' });
+  }
+
+  /* Launch Browser */
+  function launchBrowser() {
+    withLoader(() => {
+      // Try to open Chrome (new tab to Google). Pop-up blockers may intervene.
+      const newTab = window.open('https://www.google.com', '_blank', 'noopener');
+      if (!newTab) {
+        // Fallback: Simulated Chrome window with a helpful link and tiny “address bar”.
+        const wrap = document.createElement('div');
+        const bar = document.createElement('div'); bar.className = 'addr-bar';
+        const input = document.createElement('input'); input.placeholder = 'Enter URL (https://...)';
+        const go = document.createElement('button'); go.textContent = 'Go';
+        bar.append(input, go);
+
+        const inner = document.createElement('div'); inner.className = 'chrome-fallback';
+        inner.innerHTML = `
+          <div>
+            <h3>Chrome was blocked by your browser</h3>
+            <p>Pop-up was blocked. Use the address bar above or <a href="https://www.google.com" target="_blank" rel="noopener">click here</a> to open it.</p>
+          </div>
+        `;
+
+        const { contentEl } = createWindow({ title: 'Chrome', content: document.createElement('div'), id: 'chrome-fallback' });
+        contentEl.parentElement.insertBefore(bar, contentEl);
+        contentEl.appendChild(inner);
+
+        go.addEventListener('click', () => {
+          const url = (input.value || '').trim();
+          if (!url) return;
+          const href = url.match(/^https?:\/\//i) ? url : 'https://' + url;
+          window.open(href, '_blank', 'noopener');
+        });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go.click(); });
+      }
+    }, 'Starting Browser...');
+  }
+
+  // Start!
+  runBoot();
+})();
+</script>
+</body>
+</html>
